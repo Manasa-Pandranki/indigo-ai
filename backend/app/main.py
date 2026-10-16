@@ -1,18 +1,20 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 
 from app.schemas.ingestion import IngestionRequest, IngestionResult
-from app.services.llm_service import analyze_message
+from app.services.llm_service import (
+    analyze_message,
+    generate_contextual_response,
+)
 from app.utils.token_counter import estimate_tokens
 
 app = FastAPI(
     title="Enterprise Structured Ingestion Firewall",
-    description="Classifies user messages and validates structured AI output.",
-    version="1.0.0",
+    description="Classifies user messages and generates contextual responses.",
+    version="1.1.0",
 )
 
-# Simple local-development CORS configuration. Restrict this in production.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,21 +26,42 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "message": "Ingestion Firewall API is running"}
+    return {
+        "status": "ok",
+        "message": "Ingestion Firewall API is running",
+    }
 
 
-@app.post("/api/analyze", response_model=IngestionResult)
+@app.post("/api/analyze")
 def analyze(request: IngestionRequest):
     message = request.message.strip()
+
     if not message:
-        raise HTTPException(status_code=422, detail="Message cannot be empty.")
+        raise HTTPException(
+            status_code=422,
+            detail="Message cannot be empty.",
+        )
 
     try:
+        # Step 1: Classify the user's message.
         result = analyze_message(message)
-        # Add a local estimate for context budgeting. Provider-reported token
-        # counts may differ; this is not billed-usage accounting.
+
+        # Step 2: Generate a helpful response using the classification.
+        answer = generate_contextual_response(
+            message=message,
+            intent=result.intent,
+            summary=result.summary,
+        )
+
+        # Step 3: Add the estimated input token count.
         result.token_metadata.estimated_input_tokens = estimate_tokens(message)
-        return result
+
+        # Step 4: Return both the classification and generated answer.
+        return {
+            **result.model_dump(),
+            "answer": answer,
+        }
+
     except ValidationError as exc:
         raise HTTPException(
             status_code=502,
@@ -47,9 +70,13 @@ def analyze(request: IngestionRequest):
                 "validation_errors": exc.errors(),
             },
         ) from exc
+
     except Exception as exc:
-        # Keep the response simple; avoid exposing secrets or internal details.
+        print(f"Analysis error: {exc}")
         raise HTTPException(
             status_code=502,
-            detail="LLM request failed. Check the API key, model name, network, and provider limits.",
+            detail=(
+                "LLM request failed. Check the API key, model name, "
+                "network, and provider limits."
+            ),
         ) from exc

@@ -1,0 +1,97 @@
+```css
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  font-family: Arial, sans-serif;
+  color: #1f2937;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.app-header h1 {
+  color: #2563eb;
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.app-header p {
+  color: #6b7280;
+  font-size: 16px;
+}
+
+.message-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.message-form label {
+  font-weight: bold;
+}
+
+.message-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+}
+
+.message-form textarea:focus {
+  outline: 2px solid #93c5fd;
+  border-color: #2563eb;
+}
+
+.message-form button {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.message-form button:hover {
+  background: #1d4ed8;
+}
+
+.message-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.answer-panel {
+  margin-top: 24px;
+  padding: 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+
+.answer-panel h2,
+.answer-panel h3 {
+  color: #1d4ed8;
+}
+
+.error {
+  margin-top: 16px;
+  color: #b91c1c;
+}
+```
