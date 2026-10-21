@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from threading import Lock
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
@@ -14,6 +15,11 @@ app = FastAPI(
     description="Classifies user messages and generates contextual responses.",
     version="1.1.0",
 )
+# Temporary in-memory storage for chat sessions
+chat_sessions: dict[str, list[dict[str, str]]] = {}
+
+# Protect shared session storage from simultaneous updates
+chat_sessions_lock = Lock()
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,6 +41,7 @@ def health_check():
 @app.post("/api/analyze")
 def analyze(request: IngestionRequest):
     message = request.message.strip()
+    session_id = request.session_id
 
     if not message:
         raise HTTPException(
@@ -43,22 +50,44 @@ def analyze(request: IngestionRequest):
         )
 
     try:
-        # Step 1: Classify the user's message.
+        # Step 1: Classify the current message.
         result = analyze_message(message)
 
-        # Step 2: Generate a helpful response using the classification.
+        # Step 2: Get this session's previous conversation.
+        with chat_sessions_lock:
+            history = list(chat_sessions.get(session_id, []))
+
+        # Step 3: Generate a response using previous history.
         answer = generate_contextual_response(
             message=message,
             intent=result.intent,
             summary=result.summary,
+            chat_history=history,
         )
 
-        # Step 3: Add the estimated input token count.
-        result.token_metadata.estimated_input_tokens = estimate_tokens(message)
+        # Step 4: Store the user message and AI response.
+        with chat_sessions_lock:
+            session_history = chat_sessions.setdefault(
+                session_id, []
+            )
+            session_history.append({
+                "role": "user",
+                "content": message,
+            })
+            session_history.append({
+                "role": "assistant",
+                "content": answer,
+            })
 
-        # Step 4: Return both the classification and generated answer.
+        # Step 5: Add token metadata.
+        result.token_metadata.estimated_input_tokens = (
+            estimate_tokens(message)
+        )
+
+        # Step 6: Return the response.
         return {
             **result.model_dump(),
+            "session_id": session_id,
             "answer": answer,
         }
 
@@ -66,7 +95,9 @@ def analyze(request: IngestionRequest):
         raise HTTPException(
             status_code=502,
             detail={
-                "error": "The model response did not pass schema validation.",
+                "error": (
+                    "The model response did not pass schema validation."
+                ),
                 "validation_errors": exc.errors(),
             },
         ) from exc

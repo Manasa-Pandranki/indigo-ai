@@ -1,3 +1,4 @@
+
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import './App.css'
@@ -7,6 +8,21 @@ function App() {
   const [answer, setAnswer] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const [sessionId, setSessionId] = useState(
+    () => crypto.randomUUID()
+  )
+
+  function handleNewChat() {
+    const newId = crypto.randomUUID()
+
+    console.log('New Session ID:', newId)
+
+    setSessionId(newId)
+    setMessage('')
+    setAnswer('')
+    setError('')
+  }
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -22,23 +38,28 @@ function App() {
     setAnswer('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: message.trim() }),
-      })
+      const response = await fetch(
+        'http://127.0.0.1:8000/api/analyze',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message: message.trim(),
+          }),
+        }
+      )
 
       if (!response.ok) {
-        throw new Error('Request failed with status ' + response.status)
+        throw new Error(
+          'Request failed with status ' + response.status
+        )
       }
 
       const data = await response.json()
-
-      const markdownAnswer = data.answer
-
-      setAnswer(markdownAnswer)
+      setAnswer(data.answer)
     } catch (err) {
       console.error('Analysis error:', err)
       setError(
@@ -55,6 +76,14 @@ function App() {
         <h1>AI Message Analyzer</h1>
         <p>Analyze messages and view structured AI results.</p>
       </header>
+
+      <button
+        type="button"
+        onClick={handleNewChat}
+        disabled={loading}
+      >
+        + New Chat
+      </button>
 
       <form onSubmit={handleSubmit} className="message-form">
         <label htmlFor="message">Enter your message</label>
@@ -74,7 +103,11 @@ function App() {
         </button>
       </form>
 
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       {answer && (
         <section className="answer-panel" aria-live="polite">

@@ -18,6 +18,13 @@ Priority = Literal["low", "medium", "high"]
 class IngestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    session_id: str = Field(
+    min_length=1,
+    max_length=100,
+    description="Unique identifier for the conversation session.",
+    examples=["session_101"],
+)
+
     message: str = Field(
         min_length=1,
         max_length=5000,
