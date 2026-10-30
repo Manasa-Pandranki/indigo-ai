@@ -2,7 +2,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import './App.css'
-const API_URL = import.meta.env.VITE_API_URL || 'https://enterprise-ingestion-firewall-api.onrender.com'
+
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://enterprise-ingestion-firewall-api.onrender.com'
 
 function App() {
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID())
@@ -12,47 +15,31 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // New UI states
   const [darkMode, setDarkMode] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
+  // Load all conversations
   const loadConversations = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/api/conversations`)
-      if (!response.ok) throw new Error('Could not load conversations')
+
+      if (!response.ok) {
+        throw new Error('Could not load conversations')
+      }
 
       const data = await response.json()
-      setConversations(data.conversations || [])
+      setConversations(data.items || [])
     } catch (err) {
       console.error('Conversation list error:', err)
     }
   }, [])
 
+  // Fetch conversations when the app loads
   useEffect(() => {
-  let ignore = false
+    loadConversations()
+  }, [loadConversations])
 
-  async function fetchConversations() {
-    try {
-      const response = await fetch(`${API_URL}/api/conversations`)
-      if (!response.ok) throw new Error('Could not load conversations')
-
-      const data = await response.json()
-
-      if (!ignore) {
-        setConversations(data.conversations || [])
-      }
-    } catch (err) {
-      console.error('Conversation list error:', err)
-    }
-  }
-
-  fetchConversations()
-
-  return () => {
-    ignore = true
-  }
-}, [])
-
+  // Start a new conversation
   function handleNewChat() {
     setSessionId(crypto.randomUUID())
     setMessages([])
@@ -60,6 +47,7 @@ function App() {
     setError('')
   }
 
+  // Load an existing conversation
   async function handleSelectConversation(id) {
     if (loading) return
 
@@ -68,24 +56,27 @@ function App() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/conversations/${id}`
+        `${API_URL}/api/conversations/${id}/messages`
       )
 
-      if (!response.ok) throw new Error('Could not load conversation')
+      if (!response.ok) {
+        throw new Error('Could not load conversation')
+      }
 
       const data = await response.json()
 
-      setSessionId(id)
-      setMessages(data.messages || [])
+      setSessionId(data.session_id || id)
+      setMessages(data.items || [])
       setMessage('')
     } catch (err) {
-      console.error(err)
+      console.error('Conversation loading error:', err)
       setError('Could not load this conversation.')
     } finally {
       setLoading(false)
     }
   }
 
+  // Send message to AI
   async function handleSubmit(event) {
     event.preventDefault()
 
@@ -115,18 +106,30 @@ function App() {
 
       const data = await response.json()
 
-      setSessionId(data.session_id)
+      if (!data.response_markdown) {
+        throw new Error('AI response is missing from backend')
+      }
+
+      setSessionId(data.session_id || sessionId)
 
       setMessages((previous) => [
         ...previous,
-        { role: 'user', content: currentMessage },
-        { role: 'assistant', content: data.answer },
+        {
+          role: 'user',
+          content: currentMessage,
+        },
+        {
+          role: 'assistant',
+          content: data.response_markdown,
+        },
       ])
 
       await loadConversations()
     } catch (err) {
       console.error('Analysis error:', err)
-      setError('Could not connect to the backend. Please check the server.')
+      setError(
+        'Could not get an AI response. Please try again.'
+      )
       setMessage(currentMessage)
     } finally {
       setLoading(false)
@@ -152,7 +155,9 @@ function App() {
             <span>＋</span> New Conversation
           </button>
 
-          <h3 className="sidebar-section-title">YOUR CONVERSATIONS</h3>
+          <h3 className="sidebar-section-title">
+            YOUR CONVERSATIONS
+          </h3>
 
           <div className="conversation-list">
             {conversations.map((chat) => (
@@ -161,7 +166,9 @@ function App() {
                 className={`conversation-item ${
                   sessionId === chat.session_id ? 'active' : ''
                 }`}
-                onClick={() => handleSelectConversation(chat.session_id)}
+                onClick={() =>
+                  handleSelectConversation(chat.session_id)
+                }
                 disabled={loading}
                 title={chat.title}
               >
@@ -173,7 +180,9 @@ function App() {
             ))}
 
             {conversations.length === 0 && (
-              <p className="empty-history">No conversations yet.</p>
+              <p className="empty-history">
+                No conversations yet.
+              </p>
             )}
           </div>
 
@@ -215,11 +224,14 @@ function App() {
         </header>
 
         <section className="chat-messages" aria-live="polite">
+
           {messages.length === 0 && (
             <div className="welcome-message">
               <div className="welcome-icon">✦</div>
               <h2>Welcome to your AI workspace</h2>
-              <p>Start a conversation. Your chat history will be saved.</p>
+              <p>
+                Start a conversation. Your chat history will be saved.
+              </p>
             </div>
           )}
 
@@ -233,7 +245,9 @@ function App() {
               </strong>
 
               {item.role === 'assistant' ? (
-                <ReactMarkdown>{item.content}</ReactMarkdown>
+                <ReactMarkdown>
+                  {item.content || ''}
+                </ReactMarkdown>
               ) : (
                 <p>{item.content}</p>
               )}
@@ -249,7 +263,9 @@ function App() {
         </section>
 
         {error && (
-          <p className="error" role="alert">{error}</p>
+          <p className="error" role="alert">
+            {error}
+          </p>
         )}
 
         <form onSubmit={handleSubmit} className="message-form">
@@ -262,7 +278,10 @@ function App() {
             disabled={loading}
           />
 
-          <button type="submit" disabled={loading || !message.trim()}>
+          <button
+            type="submit"
+            disabled={loading || !message.trim()}
+          >
             {loading ? 'Sending...' : 'Send ↑'}
           </button>
         </form>
@@ -270,6 +289,7 @@ function App() {
         <p className="input-caption">
           AI responses may contain mistakes. Verify important information.
         </p>
+
       </main>
     </div>
   )
