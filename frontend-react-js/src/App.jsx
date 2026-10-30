@@ -2,8 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import './App.css'
-
-const API_URL = 'http://127.0.0.1:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://enterprise-ingestion-firewall-api.onrender.com'
 
 function App() {
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID())
