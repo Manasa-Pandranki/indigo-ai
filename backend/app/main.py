@@ -1,26 +1,39 @@
+
+from uuid import uuid4
+
 from fastapi import FastAPI, HTTPException
-from threading import Lock
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
-from app.schemas.ingestion import IngestionRequest, IngestionResult
+from app.schemas.ingestion import IngestionRequest
 from app.services.llm_service import (
     analyze_message,
     generate_contextual_response,
 )
+from app.services.database_service import (
+    initialize_database,
+    get_chat_history,
+    add_chat_message,
+    list_conversations,
+    get_conversation_messages,
+)
 from app.utils.token_counter import estimate_tokens
+
 
 app = FastAPI(
     title="Enterprise Structured Ingestion Firewall",
     description="Classifies user messages and generates contextual responses.",
     version="1.1.0",
 )
-# Temporary in-memory storage for chat sessions
-chat_sessions: dict[str, list[dict[str, str]]] = {}
 
-# Protect shared session storage from simultaneous updates
-chat_sessions_lock = Lock()
 
+# Initialize Supabase PostgreSQL database on startup.
+@app.on_event("startup")
+def startup_event():
+    initialize_database()
+
+
+# Configure CORS.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,6 +43,7 @@ app.add_middleware(
 )
 
 
+# Health check endpoint.
 @app.get("/health")
 def health_check():
     return {
@@ -38,10 +52,11 @@ def health_check():
     }
 
 
+# Analyze message and maintain conversation history.
 @app.post("/api/analyze")
 def analyze(request: IngestionRequest):
     message = request.message.strip()
-    session_id = request.session_id
+    session_id = str(request.session_id or uuid4())
 
     if not message:
         raise HTTPException(
@@ -53,11 +68,10 @@ def analyze(request: IngestionRequest):
         # Step 1: Classify the current message.
         result = analyze_message(message)
 
-        # Step 2: Get this session's previous conversation.
-        with chat_sessions_lock:
-            history = list(chat_sessions.get(session_id, []))
+        # Step 2: Retrieve previous conversation from Supabase.
+        history = get_chat_history(session_id)
 
-        # Step 3: Generate a response using previous history.
+        # Step 3: Generate a contextual response.
         answer = generate_contextual_response(
             message=message,
             intent=result.intent,
@@ -65,19 +79,9 @@ def analyze(request: IngestionRequest):
             chat_history=history,
         )
 
-        # Step 4: Store the user message and AI response.
-        with chat_sessions_lock:
-            session_history = chat_sessions.setdefault(
-                session_id, []
-            )
-            session_history.append({
-                "role": "user",
-                "content": message,
-            })
-            session_history.append({
-                "role": "assistant",
-                "content": answer,
-            })
+        # Step 4: Save user message and assistant response.
+        add_chat_message(session_id, "user", message)
+        add_chat_message(session_id, "assistant", answer)
 
         # Step 5: Add token metadata.
         result.token_metadata.estimated_input_tokens = (
@@ -107,7 +111,42 @@ def analyze(request: IngestionRequest):
         raise HTTPException(
             status_code=502,
             detail=(
-                "LLM request failed. Check the API key, model name, "
-                "network, and provider limits."
+                "Request failed. Check the database, API key, "
+                "model name, and network."
             ),
+        ) from exc
+
+
+# Get the list of previous conversations.
+@app.get("/api/conversations")
+def get_conversations():
+    try:
+        return {
+            "conversations": list_conversations()
+        }
+
+    except Exception as exc:
+        print(f"Conversation list error: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load conversations.",
+        ) from exc
+
+
+# Get all messages from a selected conversation.
+@app.get("/api/conversations/{session_id}")
+def get_conversation(session_id: str):
+    try:
+        messages = get_conversation_messages(session_id)
+
+        return {
+            "session_id": session_id,
+            "messages": messages,
+        }
+
+    except Exception as exc:
+        print(f"Conversation history error: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load conversation history.",
         ) from exc
