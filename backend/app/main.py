@@ -35,7 +35,7 @@ def startup_event():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://ai-engineer-workshop-five.vercel.app"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
