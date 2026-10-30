@@ -12,6 +12,7 @@ from app.services.llm_service import (
 )
 from app.services.database_service import (
     initialize_database,
+    ensure_conversation,
     get_chat_history,
     add_chat_message,
     list_conversations,
@@ -21,19 +22,17 @@ from app.utils.token_counter import estimate_tokens
 
 
 app = FastAPI(
-    title="Enterprise Structured Ingestion Firewall",
-    description="Classifies user messages and generates contextual responses.",
-    version="1.1.0",
+    title="Enterprise Ingestion Firewall",
+    description="AI-powered message analysis and contextual assistance.",
+    version="4.0.0",
 )
 
 
-# Initialize Supabase PostgreSQL database on startup.
 @app.on_event("startup")
 def startup_event():
     initialize_database()
 
 
-# Configure CORS.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,16 +42,43 @@ app.add_middleware(
 )
 
 
-# Health check endpoint.
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
         "message": "Ingestion Firewall API is running",
+        "database": "postgresql",
     }
 
 
-# Analyze message and maintain conversation history.
+@app.get("/api/conversations")
+def get_conversations():
+    try:
+        return {"items": list_conversations()}
+    except Exception as exc:
+        print(f"Conversation list error: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load conversations.",
+        ) from exc
+
+
+@app.get("/api/conversations/{session_id}/messages")
+def get_conversation(session_id: str):
+    try:
+        messages = get_conversation_messages(session_id)
+        return {
+            "session_id": session_id,
+            "items": messages,
+        }
+    except Exception as exc:
+        print(f"Conversation history error: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load conversation history.",
+        ) from exc
+
+
 @app.post("/api/analyze")
 def analyze(request: IngestionRequest):
     message = request.message.strip()
@@ -65,43 +91,37 @@ def analyze(request: IngestionRequest):
         )
 
     try:
-        # Step 1: Classify the current message.
+        ensure_conversation(session_id, message[:70])
+
         result = analyze_message(message)
 
-        # Step 2: Retrieve previous conversation from Supabase.
         history = get_chat_history(session_id)
 
-        # Step 3: Generate a contextual response.
-        answer = generate_contextual_response(
+        response_markdown = generate_contextual_response(
             message=message,
             intent=result.intent,
             summary=result.summary,
             chat_history=history,
         )
 
-        # Step 4: Save user message and assistant response.
         add_chat_message(session_id, "user", message)
-        add_chat_message(session_id, "assistant", answer)
+        add_chat_message(session_id, "assistant", response_markdown)
 
-        # Step 5: Add token metadata.
-        result.token_metadata.estimated_input_tokens = (
-            estimate_tokens(message)
+        result.token_metadata.estimated_input_tokens = estimate_tokens(
+            message
         )
 
-        # Step 6: Return the response.
         return {
             **result.model_dump(),
             "session_id": session_id,
-            "answer": answer,
+            "response_markdown": response_markdown,
         }
 
     except ValidationError as exc:
         raise HTTPException(
             status_code=502,
             detail={
-                "error": (
-                    "The model response did not pass schema validation."
-                ),
+                "error": "The model response did not pass schema validation.",
                 "validation_errors": exc.errors(),
             },
         ) from exc
@@ -111,42 +131,7 @@ def analyze(request: IngestionRequest):
         raise HTTPException(
             status_code=502,
             detail=(
-                "Request failed. Check the database, API key, "
+                "The AI request failed. Check the database, API key, "
                 "model name, and network."
             ),
-        ) from exc
-
-
-# Get the list of previous conversations.
-@app.get("/api/conversations")
-def get_conversations():
-    try:
-        return {
-            "conversations": list_conversations()
-        }
-
-    except Exception as exc:
-        print(f"Conversation list error: {exc}")
-        raise HTTPException(
-            status_code=500,
-            detail="Could not load conversations.",
-        ) from exc
-
-
-# Get all messages from a selected conversation.
-@app.get("/api/conversations/{session_id}")
-def get_conversation(session_id: str):
-    try:
-        messages = get_conversation_messages(session_id)
-
-        return {
-            "session_id": session_id,
-            "messages": messages,
-        }
-
-    except Exception as exc:
-        print(f"Conversation history error: {exc}")
-        raise HTTPException(
-            status_code=500,
-            detail="Could not load conversation history.",
         ) from exc
