@@ -22,8 +22,8 @@ from app.utils.token_counter import estimate_tokens
 
 
 app = FastAPI(
-    title="Enterprise Ingestion Firewall",
-    description="AI-powered message analysis and contextual assistance.",
+    title="Indigo.ai",
+    description="An intelligent AI workspace with contextual responses and conversation memory.",
     version="4.0.0",
 )
 
