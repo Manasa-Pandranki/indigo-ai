@@ -1,105 +1,235 @@
-# Enterprise Structured Ingestion Firewall
+# Indigo.ai — Intelligent AI Workspace
 
-A beginner-friendly demo that classifies a customer-support message with a cloud LLM (Groq) and validates the structured result with Pydantic before returning it. The backend is FastAPI; the optional frontend is plain HTML/CSS/JavaScript.
+Indigo.ai is an AI-powered conversational workspace that analyzes user messages, identifies their intent and risk level, and generates context-aware responses using Large Language Models (LLMs).
 
-The "firewall" is the schema: whatever the model returns must match a fixed set of fields and allowed values, or it is rejected.
+The application combines a React frontend, FastAPI backend, Groq-powered AI processing, and PostgreSQL database to provide an interactive chat experience with conversation history.
 
-## How it works
+## Project Overview
 
-```text
-Browser (frontend/)  ──POST /api/analyze {"message": "..."}──►  FastAPI (backend/app/main.py)
-                                                                  │
-                     1. IngestionRequest validates the input  ◄───┤  schemas/ingestion.py
-                     2. Groq LLM classifies via Instructor    ◄───┤  services/llm_service.py
-                     3. IngestionResult validates the output  ◄───┤  schemas/ingestion.py
-                     4. Local token estimate is added         ◄───┘  utils/token_counter.py
-                                                                  ▼
-                                                    validated JSON response
-```
+Indigo.ai aims to make message understanding and response generation easier through AI-powered intent detection and contextual conversations.
 
-Example: `"My payment was deducted twice. Please help urgently."` becomes
+Users can enter messages and receive structured analysis along with AI-generated Markdown responses.
 
-```json
-{
-  "intent": "payment_issue",
-  "risk_profile": "high",
-  "priority": "high",
-  "requires_action": true,
-  "summary": "User reports a duplicate payment deduction and requests urgent assistance.",
-  "token_metadata": { "estimated_input_tokens": 10, "note": "Estimated locally; may differ from provider token counts." }
-}
-```
+## Key Features
 
-## Requirements
+- **AI-powered message analysis:** Identifies the intent behind user messages.
+- **Risk classification:** Categorizes messages based on risk levels.
+- **Priority detection:** Determines the priority of analyzed messages.
+- **Context-aware responses:** Generates responses using previous conversation history.
+- **Markdown rendering:** Displays AI responses in readable Markdown format.
+- **Conversation management:** Creates and stores conversations.
+- **Persistent history:** Retrieves previous conversations and messages.
+- **Token estimation:** Provides estimated input token metadata.
+- **Responsive interface:** Modern chat interface with light and dark themes.
 
-- Python 3.10+ (tested on 3.12)
-- A Groq API key: https://console.groq.com/keys
-- Internet access for the LLM request
+## Weekly Learning Outcomes
 
-## Quick start (Windows PowerShell)
+### Week 1 — LLM APIs and Structured Outputs
+- Explored LLM API integration.
+- Worked with Groq API.
+- Learned Pydantic models and data validation.
+- Implemented structured output generation.
+- Used Instructor for structured LLM responses.
 
-```powershell
-# 1. Backend setup
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
-notepad .env          # set GROQ_API_KEY and GROQ_MODEL=openai/gpt-oss-120b
+### Week 2 — LLM Integration and Response Generation
+- Integrated the backend with an LLM API.
+- Implemented context-aware response generation.
+- Worked with prompt templates and conversation context.
+- Integrated React Markdown rendering.
 
-# 2. Run tests
-pytest -q
+### Week 3 — Backend and Database Integration
+- Developed backend APIs using FastAPI.
+- Integrated PostgreSQL database.
+- Implemented conversation and message storage.
+- Added conversation history retrieval.
+- Connected frontend and backend.
 
-# 3. Start the API (leave running)
-uvicorn app.main:app --reload --port 8000
-```
+### Week 4 — Deployment and Production Integration
+- Deployed the backend using Render.
+- Deployed the frontend using Vercel.
+- Configured production environment variables.
+- Integrated frontend and backend deployment URLs.
+- Configured CORS for production communication.
+- Tested AI responses and conversation history in the deployed application.
 
-In a second terminal, from the project root:
+## Technology Stack
 
-```powershell
-python -m http.server 5500 --bind 127.0.0.1 --directory frontend
-Start-Process http://127.0.0.1:5500
-```
-
-On macOS/Linux, activate with `source .venv/bin/activate` and use `cp` instead of `copy`.
-
-> **Model note:** `.env.example` still lists `llama-3.3-70b-versatile`, which no longer exists on Groq and makes every request fail with a 502. Set `GROQ_MODEL=openai/gpt-oss-120b` (or another available model) in your `.env`.
-
-## Further docs
-
-| Doc | Covers |
+| Layer | Technologies |
 |---|---|
-| [backend/README.md](backend/README.md) | Detailed setup, API reference, code walkthrough, troubleshooting the `502` error |
-| [frontend/README.md](frontend/README.md) | Running the UI, changing the backend URL, how the page works |
+| Frontend | React.js, JavaScript, CSS |
+| Build Tool | Vite |
+| Backend | Python, FastAPI |
+| LLM Provider | Groq |
+| Structured Outputs | Instructor, Pydantic |
+| Database | Supabase PostgreSQL |
+| Markdown | React Markdown |
+| Token Estimation | tiktoken |
+| Backend Deployment | Render |
+| Frontend Deployment | Vercel |
+| Version Control | Git, GitHub |
 
-## What this demo does and does not do
+## System Architecture
 
-- The LLM classifies the message into a fixed set of intents: `greeting`, `order_tracking`, `payment_issue`, `current_time`, `general_question`, `unknown`.
-- Instructor asks the model for a Pydantic-shaped result and retries up to 2 times if validation fails; Pydantic validates the final result.
-- `tiktoken` estimates input tokens with an approximate tokenizer. It is not Groq billing data.
-- It does **not** look up real orders or fetch the current time; it only classifies the request.
-- Schema validation checks structure and allowed values, not factual truth or prompt-injection safety.
-- No database is required.
+1. User enters a message through the React frontend.
+2. The frontend sends the request to the FastAPI backend.
+3. The backend validates the input using Pydantic.
+4. The AI service analyzes the message and identifies its intent, risk profile, and priority.
+5. Groq generates a context-aware response using conversation history.
+6. Conversation messages are stored in PostgreSQL.
+7. The backend returns the analysis and Markdown response.
+8. The React frontend displays the response to the user.
 
-## Folder layout
+## Project Structure
 
 ```text
-enterprise-ingestion-firewall/
+Ai-Engineer-workshop-sync/
+│
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                  # FastAPI app and routes
-│   │   ├── config.py                # loads .env
-│   │   ├── schemas/ingestion.py     # request/result Pydantic models
-│   │   ├── services/llm_service.py  # prompt + Groq/Instructor call
-│   │   └── utils/token_counter.py   # tiktoken estimate
-│   ├── tests/test_ingestion.py
-│   ├── .env.example
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── schemas/
+│   │   │   └── ingestion.py
+│   │   └── services/
+│   │       ├── database_service.py
+│   │       └── llm_service.py
 │   ├── requirements.txt
-│   └── README.md
-├── frontend/
+│   └── .env
+│
+├── frontend-react-js/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   └── ...
 │   ├── index.html
-│   ├── style.css
-│   ├── script.js
-│   └── README.md
+│   ├── package.json
+│   └── package-lock.json
+│
 └── README.md
 ```
+
+## Local Setup
+
+### Prerequisites
+- Python 3.10 or later
+- Node.js and npm
+- PostgreSQL database
+- Groq API key
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Manasa-Pandranki/Ai-Engineer-workshop.git
+cd Ai-Engineer-workshop
+```
+
+### 2. Backend Setup
+
+```bash
+cd backend
+python -m venv .venv
+```
+
+Activate the virtual environment.
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Create a `.env` file inside the backend folder:
+
+```env
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=openai/gpt-oss-120b
+DATABASE_URL=your_postgresql_connection_string
+```
+
+Start the backend:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Backend runs at:
+
+`http://127.0.0.1:8000`
+
+API documentation:
+
+`http://127.0.0.1:8000/docs`
+
+### 3. Frontend Setup
+
+Open another terminal:
+
+```bash
+cd frontend-react-js
+npm install
+```
+
+Create a `.env` file in the frontend folder:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+Start the frontend:
+
+```bash
+npm run dev
+```
+
+Open the local URL displayed by Vite in your browser.
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Backend health check |
+| GET | `/api/conversations` | Retrieve conversations |
+| GET | `/api/conversations/{session_id}/messages` | Retrieve conversation messages |
+| POST | `/api/analyze` | Analyze a message and generate an AI response |
+
+## Live Deployment
+
+- **Frontend:** https://ai-engineer-workshop-five.vercel.app/
+- **Backend:** https://enterprise-ingestion-firewall-api.onrender.com/
+- **Health Check:** https://enterprise-ingestion-firewall-api.onrender.com/health
+
+## Environment Variables
+
+The application requires the following environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `GROQ_API_KEY` | Groq API authentication |
+| `GROQ_MODEL` | LLM model selection |
+| `DATABASE_URL` | PostgreSQL connection |
+| `VITE_API_URL` | Backend API URL for the frontend |
+
+**Important:** Never upload API keys, database credentials, or `.env` files containing secrets to GitHub.
+
+## Future Enhancements
+
+- User authentication and personalized chat history.
+- Improved conversation search.
+- Additional AI models and provider support.
+- Advanced analytics and reporting.
+- Enhanced error handling and monitoring.
+
+## Author
+
+**Manasa Pandranki**
+
+B.Tech — Artificial Intelligence and Data Science
+
+## Acknowledgement
+
+Developed as part of the **Pro Hire Networks AI Practical Guidance Program**, covering LLM integration, structured outputs, backend development, database integration, and deployment.

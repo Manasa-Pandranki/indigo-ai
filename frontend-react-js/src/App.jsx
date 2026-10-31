@@ -1,9 +1,16 @@
-
 import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import './App.css'
 
-const API_URL = 'http://127.0.0.1:8000'
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://enterprise-ingestion-firewall-api.onrender.com'
+
+const suggestions = [
+  { icon: '✧', title: 'Explain simply', subtitle: 'Understand any topic easily' },
+  { icon: '✎', title: 'Write for me', subtitle: 'Create clear, polished content' },
+  { icon: '✦', title: 'Brainstorm', subtitle: 'Explore ideas and possibilities' },
+]
 
 function App() {
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID())
@@ -12,10 +19,9 @@ function App() {
   const [conversations, setConversations] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  // New UI states
   const [darkMode, setDarkMode] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
 
   const loadConversations = useCallback(async () => {
     try {
@@ -23,36 +29,15 @@ function App() {
       if (!response.ok) throw new Error('Could not load conversations')
 
       const data = await response.json()
-      setConversations(data.conversations || [])
+      setConversations(data.items || [])
     } catch (err) {
       console.error('Conversation list error:', err)
     }
   }, [])
 
   useEffect(() => {
-  let ignore = false
-
-  async function fetchConversations() {
-    try {
-      const response = await fetch(`${API_URL}/api/conversations`)
-      if (!response.ok) throw new Error('Could not load conversations')
-
-      const data = await response.json()
-
-      if (!ignore) {
-        setConversations(data.conversations || [])
-      }
-    } catch (err) {
-      console.error('Conversation list error:', err)
-    }
-  }
-
-  fetchConversations()
-
-  return () => {
-    ignore = true
-  }
-}, [])
+    loadConversations()
+  }, [loadConversations])
 
   function handleNewChat() {
     setSessionId(crypto.randomUUID())
@@ -69,18 +54,17 @@ function App() {
 
     try {
       const response = await fetch(
-        `${API_URL}/api/conversations/${id}`
+        `${API_URL}/api/conversations/${id}/messages`
       )
 
       if (!response.ok) throw new Error('Could not load conversation')
 
       const data = await response.json()
-
-      setSessionId(id)
-      setMessages(data.messages || [])
+      setSessionId(data.session_id || id)
+      setMessages(data.items || [])
       setMessage('')
     } catch (err) {
-      console.error(err)
+      console.error('Conversation loading error:', err)
       setError('Could not load this conversation.')
     } finally {
       setLoading(false)
@@ -93,7 +77,6 @@ function App() {
     if (!message.trim() || loading) return
 
     const currentMessage = message.trim()
-
     setLoading(true)
     setError('')
     setMessage('')
@@ -101,9 +84,7 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/api/analyze`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
           message: currentMessage,
@@ -116,33 +97,51 @@ function App() {
 
       const data = await response.json()
 
-      setSessionId(data.session_id)
+      if (!data.response_markdown) {
+        throw new Error('AI response is missing from backend')
+      }
+
+      setSessionId(data.session_id || sessionId)
 
       setMessages((previous) => [
         ...previous,
         { role: 'user', content: currentMessage },
-        { role: 'assistant', content: data.answer },
+        { role: 'assistant', content: data.response_markdown },
       ])
 
       await loadConversations()
     } catch (err) {
       console.error('Analysis error:', err)
-      setError('Could not connect to the backend. Please check the server.')
+      setError('Could not get an AI response. Please try again.')
       setMessage(currentMessage)
     } finally {
       setLoading(false)
     }
   }
 
+  const filteredConversations = conversations.filter((chat) =>
+    (chat.title || 'New Chat')
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase())
+  )
+
+  function handleSuggestion(title) {
+    const prompts = {
+      'Explain simply': 'Explain a topic to me in simple words.',
+      'Write for me': 'Help me write something professionally.',
+      Brainstorm: 'Help me brainstorm some creative ideas.',
+    }
+
+    setMessage(prompts[title] || '')
+  }
+
   return (
     <div className={`app-container ${darkMode ? 'dark-theme' : 'light-theme'}`}>
-
-      {/* Sidebar */}
       {sidebarOpen && (
         <aside className="sidebar">
-          <div className="sidebar-heading">
-            <h2>AI Workspace</h2>
-            <span className="workspace-tag">PERSONAL</span>
+          <div className="brand">
+            <div className="brand-icon">✦</div>
+            <span>Indigo<span className="brand-accent">.ai</span></span>
           </div>
 
           <button
@@ -150,13 +149,32 @@ function App() {
             onClick={handleNewChat}
             disabled={loading}
           >
-            <span>＋</span> New Conversation
+            <span>＋</span> New chat
           </button>
 
-          <h3 className="sidebar-section-title">YOUR CONVERSATIONS</h3>
+          <div className="sidebar-search">
+            <span>⌕</span>
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search chats..."
+              aria-label="Search conversations"
+            />
+          </div>
+
+          <nav className="sidebar-nav">
+            <button className="nav-item active" onClick={handleNewChat}>
+              <span>⌂</span> Home
+            </button>
+            <div className="nav-item nav-static">
+              <span>▤</span> Conversations
+            </div>
+          </nav>
+
+          <div className="history-heading">YOUR CHATS</div>
 
           <div className="conversation-list">
-            {conversations.map((chat) => (
+            {filteredConversations.map((chat) => (
               <button
                 key={chat.session_id}
                 className={`conversation-item ${
@@ -173,54 +191,107 @@ function App() {
               </button>
             ))}
 
-            {conversations.length === 0 && (
-              <p className="empty-history">No conversations yet.</p>
+            {filteredConversations.length === 0 && (
+              <p className="empty-history">
+                {searchTerm ? 'No matching chats.' : 'Your conversations will appear here.'}
+              </p>
             )}
           </div>
 
-          <div className="sidebar-footer">
-            <span className="status-dot"></span>
-            AI Assistant Workspace
+          <div className="sidebar-bottom">
+            <div className="connection-card">
+              <span className="status-dot" />
+              <div>
+                <strong>Connected</strong>
+                <small>Ready to chat</small>
+              </div>
+              <span className="connection-sparkle">✦</span>
+            </div>
+            <p>Powered by AI</p>
           </div>
         </aside>
       )}
 
-      {/* Main content */}
       <main className="chat-main">
-
         <header className="chat-header">
-          <div className="header-left">
-            <button
-              className="icon-button"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-              aria-label="Toggle sidebar"
-            >
-              ☰
-            </button>
+  <div className="header-left">
+    <button
+      className="icon-button"
+      onClick={() => setSidebarOpen(!sidebarOpen)}
+      aria-label="Toggle sidebar"
+    >
+      ☰
+    </button>
 
-            <div>
-              <h1>Enterprise AI Assistant</h1>
-              <p>Your intelligent conversation workspace</p>
-            </div>
-          </div>
+    <div className="brand header-brand">
+      <div className="brand-icon">✦</div>
+      <span>Indigo<span className="brand-accent">.ai</span></span>
+    </div>
+  </div>
 
-          <button
-            className="theme-toggle"
-            onClick={() => setDarkMode(!darkMode)}
-            title="Toggle theme"
-            aria-label="Toggle light and dark mode"
-          >
-            {darkMode ? '☀️ Light' : '🌙 Dark'}
-          </button>
-        </header>
+  <nav className="top-navigation">
+    <button onClick={handleNewChat}>Home</button>
+    <button onClick={() =>
+      document.querySelector('.suggestion-grid')?.scrollIntoView({ behavior: 'smooth' })
+    }>Features</button>
+    <button onClick={() =>
+      document.querySelector('.composer-area')?.scrollIntoView({ behavior: 'smooth' })
+    }>How it works</button>
+    <button onClick={() => setError('Documentation will be available soon.')}>
+      Documentation
+    </button>
+  </nav>
 
-        <section className="chat-messages" aria-live="polite">
+  <div className="header-actions">
+    <button
+      className="theme-toggle"
+      onClick={() => setDarkMode(!darkMode)}
+      aria-label="Toggle theme"
+    >
+      {darkMode ? '☀️' : '☾'}
+    </button>
+
+    <button className="get-started-button" onClick={handleNewChat}>
+      Get Started →
+    </button>
+  </div>
+</header>
+
+        <section className={`chat-messages ${messages.length === 0 ? 'empty-chat' : ''}`} aria-live="polite">
           {messages.length === 0 && (
             <div className="welcome-message">
-              <div className="welcome-icon">✦</div>
-              <h2>Welcome to your AI workspace</h2>
-              <p>Start a conversation. Your chat history will be saved.</p>
+              <div className="welcome-orb">
+                <span>✦</span>
+              </div>
+
+              <div className="welcome-label">
+                <span>✧</span> Your intent-aware AI assistant
+              </div>
+
+              <h1>
+                Hello there
+                <br />
+                <span>How can I assist you today?</span>
+              </h1>
+
+              <p className="welcome-description">
+                Welcome to your personal AI workspace.
+                Ask anything and get clear, helpful answers.
+              </p>
+
+              <div className="suggestion-grid">
+                {suggestions.map((item) => (
+                  <button
+                    className="suggestion-card"
+                    key={item.title}
+                    onClick={() => handleSuggestion(item.title)}
+                  >
+                    <span className="suggestion-icon">{item.icon}</span>
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle}</small>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -229,12 +300,17 @@ function App() {
               key={`${sessionId}-${index}`}
               className={`message-bubble ${item.role}`}
             >
-              <strong>
-                {item.role === 'user' ? 'You' : 'AI Assistant'}
-              </strong>
+              <div className="message-author">
+                <span className="message-avatar">
+                  {item.role === 'user' ? 'You' : '✦'}
+                </span>
+                <strong>
+                  {item.role === 'user' ? 'You' : 'Indigo.ai'}
+                </strong>
+              </div>
 
               {item.role === 'assistant' ? (
-                <ReactMarkdown>{item.content}</ReactMarkdown>
+                <ReactMarkdown>{item.content || ''}</ReactMarkdown>
               ) : (
                 <p>{item.content}</p>
               )}
@@ -243,33 +319,51 @@ function App() {
 
           {loading && (
             <div className="loading-message">
-              <span className="loading-dot"></span>
-              AI is thinking...
+              <span className="loading-dot" />
+              Indigo.ai is thinking...
             </div>
           )}
         </section>
 
-        {error && (
-          <p className="error" role="alert">{error}</p>
-        )}
+        {error && <p className="error" role="alert">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="message-form">
-          <textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Ask anything..."
-            rows={3}
-            maxLength={5000}
-            disabled={loading}
-          />
+        <div className="composer-area">
+          <form onSubmit={handleSubmit} className="message-form">
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="Ask me anything..."
+              rows={2}
+              maxLength={5000}
+              disabled={loading}
+              aria-label="Message"
+            />
 
-          <button type="submit" disabled={loading || !message.trim()}>
-            {loading ? 'Sending...' : 'Send ↑'}
-          </button>
-        </form>
+            <div className="composer-bottom">
+              <span className="intent-label">
+                <span>✧</span> Intent detection
+              </span>
+
+              <button
+                type="submit"
+                className="send-button"
+                disabled={loading || !message.trim()}
+                aria-label="Send message"
+              >
+                {loading ? '…' : '↑'}
+              </button>
+            </div>
+          </form>
+
+          <div className="composer-hints">
+            <span><kbd>Enter</kbd> to send</span>
+            <span><kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
+            <span className="memory-hint">✧ Remembers this chat</span>
+          </div>
+        </div>
 
         <p className="input-caption">
-          AI responses may contain mistakes. Verify important information.
+          AI responses may contain mistakes. Please verify important information.
         </p>
       </main>
     </div>
